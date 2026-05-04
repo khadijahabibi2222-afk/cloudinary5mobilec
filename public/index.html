@@ -797,6 +797,8 @@ body.rtl .nav-badge { margin-left: 0; margin-right: auto; }
     </div>
     <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
       <button class="btn btn-secondary btn-sm" onclick="printFamilies()" style="font-family:var(--font-fa);">🖨️ چاپ خانواده‌ها</button>
+      <button class="btn btn-secondary btn-sm" onclick="printFamilyListByChild()" style="font-family:var(--font-fa);background:rgba(91,140,245,0.15);border-color:rgba(91,140,245,0.4);color:var(--blue);">📋 لست به اساس طفل</button>
+      <button class="btn btn-secondary btn-sm" onclick="printFamilyListByMother()" style="font-family:var(--font-fa);background:rgba(76,175,138,0.15);border-color:rgba(76,175,138,0.4);color:var(--green);">📋 لست به اساس مادر</button>
     </div>
   </div>
   <!-- Filter bar -->
@@ -4764,7 +4766,7 @@ function printTableFarsi() {
   </div>
   <h2 style="font-size:13px;color:#333;">پرونده‌های ایتام — ${new Date().toLocaleDateString('fa-IR')}</h2>
   <p style="color:#888;font-size:10px;">مجموع: ${filteredOrphans.length} پرونده</p>
-  <table><thead><tr><th>شناسه</th><th>اسم</th><th>ولد</th><th>ولدیت</th><th>جنسیت</th><th>کتگوری شاگرد</th><th>سن</th><th>سرپرست</th><th>موبایل</th><th>صنف در مکتب</th><th>صنف در کورس</th><th>مکتب</th><th>نوع شمولیت</th><th>وضعیت جسمی</th><th>وضعیت پرونده</th></tr></thead>
+  <table><thead><tr><th>شناسه</th><th>اسم</th><th>ولد</th><th>ولدیت</th><th>جنسیت</th><th>کتگوری شاگرد</th><th>سن</th><th>نام مادر</th><th>ولد مادر</th><th>تذکره</th><th>مکتب</th><th>تعداد فامیل</th><th>آدرس</th><th>سرپرست</th><th>موبایل</th><th>صنف مکتب</th><th>صنف کورس</th><th>نوع شمولیت</th><th>وضعیت جسمی</th><th>وضعیت پرونده</th></tr></thead>
   <tbody>${filteredOrphans.map(o=>{
     const st=o.status==='Healthy'?'صحتمند':o.status==='Disabled'?'معلول':'بیماری مزمن';
     const edu=o.edutype==='School'?'مکتب':o.edutype==='Course'?'کورس':o.edutype==='Both'?'هر دو':'—';
@@ -4773,7 +4775,7 @@ function printTableFarsi() {
     const gen=o.gender||'—';
     const act=o.isActive===false?'غیرفعال':'فعال';
     const rowStyle=o.isActive===false?'opacity:0.55;background:#fff8f8;':'';
-    return `<tr style="${rowStyle}"><td>${o.id}</td><td>${o.name||''}</td><td>${o.father||''}</td><td>${o.grandfather||''}</td><td>${gen}</td><td>${cat}</td><td>${o.age||''}</td><td>${o.guardian||'—'}</td><td style='direction:ltr;text-align:right;'>${o.mobile||''}</td><td>${gr2}</td><td>${o.coursegrade||'—'}</td><td>${getSchoolName(o.school)}</td><td>${edu}</td><td>${st}</td><td>${act}</td></tr>`;
+    return `<tr style="${rowStyle}"><td>${o.id}</td><td>${o.name||''}</td><td>${o.father||''}</td><td>${o.grandfather||''}</td><td>${gen}</td><td>${cat}</td><td>${o.age||''}</td><td>${o.mother||'—'}</td><td>${o.motherFather||'—'}</td><td style='direction:ltr;text-align:center;'>${o.tazkira||'—'}</td><td>${getSchoolName(o.school)||'—'}</td><td style='text-align:center;'>${o.family||'—'}</td><td>${o.address||'—'}</td><td>${o.guardian||'—'}</td><td style='direction:ltr;text-align:right;'>${o.mobile||''}</td><td>${gr2}</td><td>${o.coursegrade||'—'}</td><td>${edu}</td><td>${st}</td><td>${act}</td></tr>`;
   }).join('')}</tbody></table></body></html>`);
   w.document.close(); w.print();
 }
@@ -4823,8 +4825,163 @@ function printTableEnglish() {
   w.document.close(); w.print();
 }
 
-function printTable() { printTableFarsi(); }
-function printAll() { printTableFarsi(); }
+function printFamilyListByChild() {
+  const allOrphans = [...orphans].sort((a,b)=>(a.name||'').localeCompare(b.name||'','fa'));
+  if (!allOrphans.length) { showToast('هیچ یتیمی برای چاپ وجود ندارد', 'warn'); return; }
+  const dateStr = new Date().toLocaleDateString('fa-IR');
+  const rows = allOrphans.map((o,i) => {
+    const st=o.status==='Healthy'?'صحتمند':o.status==='Disabled'?'معلول':'بیماری مزمن';
+    const edu=o.edutype==='School'?'مکتب':o.edutype==='Course'?'کورس':o.edutype==='Both'?'هر دو':'—';
+    const gr=o.grade?(o.grade==='university'?'پوهنتون':o.grade==='course'?'کورس':o.grade==='none'?'—':`صنف ${o.grade}`):'—';
+    const cat=(o.studenttype||'orphan')==='needy'?'بی‌بضاعت':'یتیم';
+    const rowBg=i%2===0?'#fff':'#f7f9f5';
+    return `<tr style="background:${rowBg}${o.isActive===false?';opacity:.55;background:#fff8f8;':''}">
+      <td style="text-align:center;color:#888;">${i+1}</td>
+      <td><strong>${o.name||'—'}</strong></td>
+      <td>${o.father||'—'}</td>
+      <td>${o.grandfather||'—'}</td>
+      <td style="text-align:center;">${o.gender||'—'}</td>
+      <td>${o.mother||'—'}</td>
+      <td>${o.motherFather||'—'}</td>
+      <td style="text-align:center;">${o.age||'—'}</td>
+      <td style="text-align:center;direction:ltr;">${o.tazkira||'—'}</td>
+      <td>${getSchoolName(o.school)||'—'}</td>
+      <td style="text-align:center;">${o.family||'—'}</td>
+      <td>${o.address||'—'}</td>
+      <td>${cat}</td>
+      <td>${gr}</td>
+      <td>${edu}</td>
+      <td>${st}</td>
+      <td style="text-align:center;">${o.isActive===false?'غیرفعال':'فعال'}</td>
+    </tr>`;
+  }).join('');
+
+  const w = window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html dir="rtl" lang="fa"><head><meta charset="UTF-8">
+  <title>لست ایتام به اساس طفل — موسسه خیریه رفاه یتیم</title>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Vazirmatn',Arial,sans-serif;direction:rtl;margin:.8cm;font-size:9.5px;color:#222;}
+    .hdr{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #3a7bd5;padding-bottom:8px;margin-bottom:10px;}
+    .org{font-size:14px;font-weight:800;color:#1a1a2e;}
+    .meta{font-size:9px;color:#888;text-align:left;direction:ltr;}
+    .report-title{font-size:13px;font-weight:700;color:#3a7bd5;}
+    .summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+    .summary span{border:1px solid #ddd;border-radius:5px;padding:3px 9px;font-size:9px;color:#555;}
+    table{width:100%;border-collapse:collapse;}
+    th{background:#1a2e5e;color:#fff;padding:5px 5px;font-size:9px;text-align:right;white-space:nowrap;}
+    td{border:1px solid #dde;padding:3.5px 5px;font-size:9px;text-align:right;}
+    @media print{body{margin:.3cm;}@page{size:A4 landscape;margin:.3cm;}}
+  </style></head><body>
+  <div class="hdr">
+    <div><div class="org">بخش اداری موسسه خیریه رفاه یتیم</div><div style="font-size:9px;color:#888;">Orphan Prosperity Charity Organization</div></div>
+    <div class="report-title">📋 لست ایتام به اساس نام طفل (الفبایی)</div>
+    <div class="meta">تاریخ: ${dateStr}</div>
+  </div>
+  <div class="summary">
+    <span>👶 مجموع ایتام: <strong>${allOrphans.length}</strong></span>
+    <span>✅ فعال: <strong>${allOrphans.filter(o=>o.isActive!==false).length}</strong></span>
+    <span>🔴 غیرفعال: <strong>${allOrphans.filter(o=>o.isActive===false).length}</strong></span>
+    <span>🕊️ یتیم: <strong>${allOrphans.filter(o=>(o.studenttype||'orphan')==='orphan').length}</strong></span>
+    <span>🤝 بی‌بضاعت: <strong>${allOrphans.filter(o=>o.studenttype==='needy').length}</strong></span>
+  </div>
+  <table><thead><tr>
+    <th>#</th><th>اسم طفل</th><th>ولد (پدر)</th><th>ولدیت (جد)</th><th>جنسیت</th>
+    <th>نام مادر</th><th>ولد مادر</th><th>سن</th><th>تذکره</th>
+    <th>مکتب</th><th>اعضای فامیل</th><th>آدرس</th>
+    <th>کتگوری</th><th>صنف</th><th>نوع شمولیت</th><th>وضعیت صحی</th><th>وضعیت</th>
+  </tr></thead>
+  <tbody>${rows}</tbody></table>
+  <div style="margin-top:16px;font-size:9px;color:#aaa;text-align:center;">ترتیب: الفبایی بر اساس نام طفل — موسسه خیریه رفاه یتیم — ${dateStr}</div>
+  </body></html>`);
+  w.document.close(); w.print();
+}
+
+function printFamilyListByMother() {
+  const withMother = orphans.filter(o => o.mother && o.mother.trim() !== '');
+  const withoutMother = orphans.filter(o => !o.mother || o.mother.trim() === '');
+  const sorted = [
+    ...withMother.sort((a,b)=>(a.mother||'').localeCompare(b.mother||'','fa')),
+    ...withoutMother.sort((a,b)=>(a.name||'').localeCompare(b.name||'','fa'))
+  ];
+  if (!sorted.length) { showToast('هیچ یتیمی برای چاپ وجود ندارد', 'warn'); return; }
+  const dateStr = new Date().toLocaleDateString('fa-IR');
+
+  // Group by mother to detect siblings
+  let prevMother = null;
+  let motherIdx = 0;
+  const rows = sorted.map((o,i) => {
+    const st=o.status==='Healthy'?'صحتمند':o.status==='Disabled'?'معلول':'بیماری مزمن';
+    const edu=o.edutype==='School'?'مکتب':o.edutype==='Course'?'کورس':o.edutype==='Both'?'هر دو':'—';
+    const gr=o.grade?(o.grade==='university'?'پوهنتون':o.grade==='course'?'کورس':o.grade==='none'?'—':`صنف ${o.grade}`):'—';
+    const cat=(o.studenttype||'orphan')==='needy'?'بی‌بضاعت':'یتیم';
+    const motherKey = (o.mother||'').trim();
+    if (motherKey !== prevMother) { motherIdx++; prevMother = motherKey; }
+    const rowBg = motherIdx%2===0?'#f0f5ff':'#fff';
+    return `<tr style="background:${rowBg}${o.isActive===false?';opacity:.55;': ''}">
+      <td style="text-align:center;color:#888;">${i+1}</td>
+      <td><strong style="color:#2a5da8;">${o.mother||'(بدون مادر)'}</strong></td>
+      <td>${o.motherFather||'—'}</td>
+      <td><strong>${o.name||'—'}</strong></td>
+      <td>${o.father||'—'}</td>
+      <td>${o.grandfather||'—'}</td>
+      <td style="text-align:center;">${o.gender||'—'}</td>
+      <td style="text-align:center;">${o.age||'—'}</td>
+      <td style="text-align:center;direction:ltr;">${o.tazkira||'—'}</td>
+      <td>${getSchoolName(o.school)||'—'}</td>
+      <td style="text-align:center;">${o.family||'—'}</td>
+      <td>${o.address||'—'}</td>
+      <td>${cat}</td>
+      <td>${gr}</td>
+      <td>${edu}</td>
+      <td>${st}</td>
+      <td style="text-align:center;">${o.isActive===false?'غیرفعال':'فعال'}</td>
+    </tr>`;
+  }).join('');
+
+  const w = window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html dir="rtl" lang="fa"><head><meta charset="UTF-8">
+  <title>لست ایتام به اساس مادر — موسسه خیریه رفاه یتیم</title>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Vazirmatn',Arial,sans-serif;direction:rtl;margin:.8cm;font-size:9.5px;color:#222;}
+    .hdr{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #4caf8a;padding-bottom:8px;margin-bottom:10px;}
+    .org{font-size:14px;font-weight:800;color:#1a1a2e;}
+    .meta{font-size:9px;color:#888;text-align:left;direction:ltr;}
+    .report-title{font-size:13px;font-weight:700;color:#2d7a5c;}
+    .summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+    .summary span{border:1px solid #ddd;border-radius:5px;padding:3px 9px;font-size:9px;color:#555;}
+    table{width:100%;border-collapse:collapse;}
+    th{background:#1a3e2e;color:#fff;padding:5px 5px;font-size:9px;text-align:right;white-space:nowrap;}
+    td{border:1px solid #dde;padding:3.5px 5px;font-size:9px;text-align:right;}
+    @media print{body{margin:.3cm;}@page{size:A4 landscape;margin:.3cm;}}
+  </style></head><body>
+  <div class="hdr">
+    <div><div class="org">بخش اداری موسسه خیریه رفاه یتیم</div><div style="font-size:9px;color:#888;">Orphan Prosperity Charity Organization</div></div>
+    <div class="report-title">📋 لست ایتام به اساس نام مادر (الفبایی)</div>
+    <div class="meta">تاریخ: ${dateStr}</div>
+  </div>
+  <div class="summary">
+    <span>👶 مجموع ایتام: <strong>${sorted.length}</strong></span>
+    <span>👩 با نام مادر: <strong>${withMother.length}</strong></span>
+    <span>❓ بدون مادر: <strong>${withoutMother.length}</strong></span>
+    <span>✅ فعال: <strong>${sorted.filter(o=>o.isActive!==false).length}</strong></span>
+    <span>🔴 غیرفعال: <strong>${sorted.filter(o=>o.isActive===false).length}</strong></span>
+  </div>
+  <table><thead><tr>
+    <th>#</th><th>نام مادر</th><th>ولد مادر</th><th>اسم طفل</th><th>ولد (پدر)</th><th>ولدیت (جد)</th><th>جنسیت</th>
+    <th>سن</th><th>تذکره</th><th>مکتب</th><th>اعضای فامیل</th><th>آدرس</th>
+    <th>کتگوری</th><th>صنف</th><th>نوع شمولیت</th><th>وضعیت صحی</th><th>وضعیت</th>
+  </tr></thead>
+  <tbody>${rows}</tbody></table>
+  <div style="margin-top:16px;font-size:9px;color:#aaa;text-align:center;">ترتیب: الفبایی بر اساس نام مادر — موسسه خیریه رفاه یتیم — ${dateStr}</div>
+  </body></html>`);
+  w.document.close(); w.print();
+}
+
+
 
 // ======================================================
 // BACKUP & RESTORE
