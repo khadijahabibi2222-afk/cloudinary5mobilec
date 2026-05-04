@@ -561,6 +561,9 @@ body.rtl .nav-badge { margin-left: 0; margin-right: auto; }
     <div class="lp-title">موسسه خیریه رفاه یتیم</div>
     <div class="lp-sub">ورود به سامانه مدیریت</div>
     <div class="lp-error" id="loginError"></div>
+    <div id="localAuthHint" style="display:none;font-size:.75rem;color:rgba(201,168,76,.75);text-align:center;margin-bottom:.5rem;padding:.4rem .75rem;background:rgba(201,168,76,.07);border-radius:6px;border:1px solid rgba(201,168,76,.18);">
+      🔒 حالت آفلاین — اطلاعات پیش‌فرض: <strong>admin</strong> / <strong>admin123</strong>
+    </div>
     <div class="lp-field">
       <label class="lp-label" id="lt-user">نام کاربری</label>
       <input class="lp-input" type="text" id="loginUser" autocomplete="username"
@@ -2101,6 +2104,12 @@ const API = (() => {
     } catch (err) {
       clearTimeout(timer);
       if (err.name === 'AbortError') throw new Error('درخواست به سرور بیش از حد طول کشید. لطفاً دوباره تلاش کنید.');
+      // Tag network/connection errors so login can fall back to local auth
+      if (err.name === 'TypeError' || err.message.includes('fetch') || err.message.includes('network') || err.message.includes('Failed')) {
+        const ne = new Error(err.message);
+        ne._offline = true;
+        throw ne;
+      }
       throw err;
     }
   }
@@ -2598,6 +2607,27 @@ function saveUsers() {
   // User mutations go through individual API calls in saveUser/deleteUser
 }
 
+// ── LOCAL AUTH HELPERS ──────────────────────────────────
+function _localUsers() {
+  try { return JSON.parse(localStorage.getItem('oms_local_users') || 'null'); } catch{ return null; }
+}
+function _initLocalUsers() {
+  if (_localUsers()) return;
+  // Seed a default admin — user can change password inside the app
+  const defaultAdmin = { id: 'local-1', username: 'admin', password: 'admin123', fullName: 'مدیر سیستم', role: 'admin' };
+  localStorage.setItem('oms_local_users', JSON.stringify([defaultAdmin]));
+}
+function _localLogin(uname, pass) {
+  _initLocalUsers();
+  const users = _localUsers() || [];
+  return users.find(u => u.username === uname && u.password === pass) || null;
+}
+function _makeLocalToken(user) {
+  // Simple base64 pseudo-token — no server validation needed in offline mode
+  return 'local.' + btoa(JSON.stringify({ id: user.id, role: user.role, ts: Date.now() }));
+}
+// ────────────────────────────────────────────────────────
+
 async function doLogin() {
   const uname = (document.getElementById('loginUser').value || '').trim();
   const pass  = (document.getElementById('loginPass').value || '').trim();
@@ -2615,6 +2645,7 @@ async function doLogin() {
   btn.textContent = '⏳ در حال ورود...';
 
   try {
+    // ── Try real backend first ──
     const res = await API.login(uname, pass);
     if (!res || !res.token) throw new Error('Invalid response');
     API.setToken(res.token);
@@ -2626,7 +2657,29 @@ async function doLogin() {
     };
     await bootApp();
   } catch(e) {
-    errEl.textContent = e.message && e.message.includes('401')
+    // ── If server is unreachable → try local auth ──
+    if (e._offline || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+      const localUser = _localLogin(uname, pass);
+      if (localUser) {
+        console.info('[Auth] Server offline — signed in via local auth');
+        API.setToken(_makeLocalToken(localUser));
+        currentUser = { id: localUser.id, username: localUser.username, fullName: localUser.fullName, role: localUser.role };
+        // Switch all API calls to localStorage mode
+        window._offlineMode = true;
+        await bootApp();
+        return;
+      } else {
+        // Server offline AND local credentials wrong
+        errEl.textContent = 'نام کاربری یا رمز عبور اشتباه است (حالت آفلاین فعال است)';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'ورود';
+        document.getElementById('loginPass').select();
+        return;
+      }
+    }
+    // ── Server online but rejected credentials ──
+    errEl.textContent = (e.message && (e.message.includes('401') || e.message.includes('Unauthorized')))
       ? 'نام کاربری یا رمز عبور اشتباه است'
       : (e.message || 'خطا در ورود — دوباره تلاش کنید');
     errEl.style.display = 'block';
@@ -2638,6 +2691,16 @@ async function doLogin() {
 
 document.getElementById('loginPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 document.getElementById('loginUser').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+// Show offline hint after 2s if backend unreachable
+setTimeout(() => {
+  fetch('/api/health', { signal: AbortSignal.timeout(2000) })
+    .then(r => { if (!r.ok) throw new Error(); })
+    .catch(() => {
+      const hint = document.getElementById('localAuthHint');
+      if (hint) hint.style.display = 'block';
+    });
+}, 800);
 
 function doLogout() {
   currentUser = null;
@@ -2698,7 +2761,7 @@ async function wakeServer() {
       const t = setTimeout(() => ctrl.abort(), POLL_MS - 500);
       const res = await fetch('/api/health', { signal: ctrl.signal });
       clearTimeout(t);
-      if (res.ok) { _hideBanner(); return; }  // server is up ✅
+      if (res.ok) { _hideBanner(); window._offlineMode = false; return; }  // server is up ✅
     } catch (_) { /* timeout or network error — keep polling */ }
     // Wait before next poll (but not after the last failed attempt)
     await new Promise(r => setTimeout(r, POLL_MS));
