@@ -747,6 +747,11 @@ body.rtl .nav-badge { margin-left: 0; margin-right: auto; }
       <option value="active">✅ فقط فعال</option>
       <option value="inactive">🔴 فقط غیرفعال</option>
     </select>
+    <select class="filter-select" id="filterGender" onchange="filterOrphans()" style="font-family:var(--font-fa);">
+      <option value="">👦👧 ذکور + اناث</option>
+      <option value="ذکور">👦 فقط ذکور</option>
+      <option value="اناث">👧 فقط اناث</option>
+    </select>
     <select class="filter-select" id="filterSort" onchange="filterOrphans()" style="font-family:var(--font-fa);">
       <option value="newest">جدیدترین اول</option>
       <option value="oldest">قدیمی‌ترین اول</option>
@@ -1527,6 +1532,14 @@ body.rtl .nav-badge { margin-left: 0; margin-right: auto; }
         <div class="fg">
           <label class="fl">پدر مادر</label>
           <input class="fi" type="text" id="f-mother-father" placeholder="نام پدر مادر" lang="fa">
+        </div>
+        <div class="fg">
+          <label class="fl">جنسیت <span style="color:var(--red)">*</span></label>
+          <select class="fi" id="f-gender">
+            <option value="">— انتخاب کنید —</option>
+            <option value="ذکور">👦 ذکور</option>
+            <option value="اناث">👧 اناث</option>
+          </select>
         </div>
         <div class="fg" style="grid-column:span 1;">
           <label class="fl">📅 تاریخ تولد (میلادی)</label>
@@ -2895,6 +2908,7 @@ function filterOrphans() {
   const courseGradeF = document.getElementById('filterCourseGrade').value;
   const studentTypeF = document.getElementById('filterStudentType')?.value || '';
   const activeF = document.getElementById('filterActive')?.value || '';
+  const genderF = document.getElementById('filterGender')?.value || '';
   // Populate school filter dropdown
   const schSel = document.getElementById('filterSchool');
   const curSchVal = schSel.value;
@@ -2911,7 +2925,8 @@ function filterOrphans() {
     const matchStudentType = !studentTypeF || (o.studenttype||'orphan') === studentTypeF;
     const oActive = o.isActive !== false;
     const matchActive = !activeF || (activeF==='active' ? oActive : !oActive);
-    return matchQ && matchAge && matchStat && matchSchool && matchEdutype && matchGrade && matchStudentType && matchCourseGrade && matchActive;
+    const matchGender = !genderF || (o.gender||'') === genderF;
+    return matchQ && matchAge && matchStat && matchSchool && matchEdutype && matchGrade && matchStudentType && matchCourseGrade && matchActive && matchGender;
   });
   filteredOrphans.sort((a,b) => {
     if(sort==='newest') return new Date(b.createdAt)-new Date(a.createdAt);
@@ -3033,6 +3048,7 @@ function openEditModal(id) {
   document.getElementById('f-grandfather').value = o.grandfather||'';
   document.getElementById('f-mother').value = o.mother||'';
   const mfEl=document.getElementById('f-mother-father'); if(mfEl) mfEl.value=o.motherFather||'';
+  const fgEl=document.getElementById('f-gender'); if(fgEl) fgEl.value=o.gender||'';
   document.getElementById('f-status').value = o.status||'Healthy';
   document.getElementById('f-active').value = (o.isActive===false) ? 'inactive' : 'active';
   document.getElementById('f-family').value = o.family||'';
@@ -3079,6 +3095,7 @@ function clearForm() {
   document.getElementById('f-status').value = 'Healthy';
   document.getElementById('f-active').value = 'active';
   document.getElementById('f-goes-school').value = 'yes';
+  const fgReset=document.getElementById('f-gender'); if(fgReset) fgReset.value='';
   document.getElementById('f-school').value = '';
   document.getElementById('f-school-type').value = '';
   document.getElementById('f-studenttype').value = '';
@@ -3197,6 +3214,7 @@ function saveOrphan() {
     grandfather: document.getElementById('f-grandfather').value.trim(),
     mother: document.getElementById('f-mother').value.trim(),
     motherFather: document.getElementById('f-mother-father')?.value.trim()||'',
+    gender: document.getElementById('f-gender')?.value || '',
     status: document.getElementById('f-status').value,
     isActive: document.getElementById('f-active').value !== 'inactive',
     family: parseInt(toEnglishDigits(document.getElementById('f-family').value)) || 0,
@@ -4548,20 +4566,29 @@ function printFamilies() {
 
   const rows = families.map((f,fi) => {
     const waldiyat = f.father+(f.grandfather?' ولد '+f.grandfather:'');
-    const memberTrs = f.members.map((m,mi) => `
-      <tr style="${mi===0?'font-weight:600;':''}background:${fi%2===0?'#fafafa':'#fff'};">
-        <td style="text-align:center;color:#888;">${mi===0?fi+1:''}</td>
-        <td style="text-align:center;">${mi===0?waldiyat:''}</td>
-        <td>${m.name||'—'}</td>
-        <td style="text-align:center;">${m.age||'—'}</td>
-        <td>${m.father||'—'}</td>
-        <td>${m.grandfather||'—'}</td>
-        <td style="direction:ltr;text-align:right;">${m.mobile||'—'}</td>
-        <td style="text-align:center;">${m.status==='Healthy'?'سالم':m.status==='Disabled'?'معیوب':'مریض'}</td>
-        <td style="text-align:center;">${m.isActive===false?'غیرفعال':'فعال'}</td>
-        <td style="text-align:center;font-weight:600;color:${m.priority==='very_worthy'?'#c0392b':m.priority==='worthy'?'#856404':'#2d6a4f'};">${priorityText(m.priority)}</td>
-      </tr>`).join('');
-    return memberTrs;
+    // Gather mother info from members (use first member's data)
+    const motherName = f.mother || f.members[0]?.mother || '—';
+    const motherFatherName = f.members[0]?.motherFather || '—';
+    const address = f.members[0]?.address || '—';
+    const mobile = f.members.find(m=>m.mobile)?.mobile || '—';
+    // Top priority of family
+    const topPri = f.members.some(m=>m.priority==='very_worthy')?'very_worthy':f.members.some(m=>m.priority==='worthy')?'worthy':f.members.some(m=>m.priority==='average')?'average':'';
+    const priColor = topPri==='very_worthy'?'#c0392b':topPri==='worthy'?'#856404':'#2d6a4f';
+    const rowBg = fi%2===0?'#fafafa':'#fff';
+
+    // Children as comma-separated with age
+    const childrenStr = f.members.map(m=>`${m.name||'—'} (${m.age||'—'})`).join(' · ');
+
+    return `<tr style="background:${rowBg};">
+      <td style="text-align:center;color:#888;font-weight:700;">${fi+1}</td>
+      <td style="font-weight:700;color:#2c5282;">${waldiyat}</td>
+      <td style="font-weight:600;color:#276749;">${motherName}</td>
+      <td>${motherFatherName}</td>
+      <td>${childrenStr}</td>
+      <td style="direction:ltr;text-align:right;">${mobile}</td>
+      <td>${address}</td>
+      <td style="text-align:center;font-weight:700;color:${priColor};">${priorityText(topPri)||'—'}</td>
+    </tr>`;
   }).join('');
 
   const html = `<!DOCTYPE html><html dir="rtl" lang="fa">
@@ -4576,8 +4603,9 @@ function printFamilies() {
   .sum{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
   .sum span{border:1px solid #ddd;border-radius:6px;padding:4px 10px;font-size:9px;}
   table{width:100%;border-collapse:collapse;margin-bottom:6px;}
-  th{background:#1a1a2e;color:#fff;padding:5px 6px;font-size:9px;text-align:right;}
-  td{border:1px solid #e0e0e0;padding:4px 6px;font-size:9px;text-align:right;}
+  th{background:#1a2e5e;color:#fff;padding:6px 7px;font-size:9.5px;text-align:right;}
+  td{border:1px solid #e0e0e0;padding:5px 7px;font-size:9.5px;text-align:right;vertical-align:middle;}
+  tr:hover td{background:#f0f7ff;}
   @media print{body{margin:.4cm;} @page{size:A4 landscape;margin:.4cm;}}
 </style></head><body>
 <div class="hdr">
@@ -4596,9 +4624,13 @@ function printFamilies() {
 <table>
   <thead><tr>
     <th style="width:28px;">#</th>
-    <th>ولدیت</th><th>نام</th><th style="width:30px;">سن</th>
-    <th>ولد</th><th>جد</th><th>موبایل</th>
-    <th>وضعیت صحی</th><th>پرونده</th><th>استحقاق</th>
+    <th>ولدیت (پدر)</th>
+    <th>نام مادر</th>
+    <th>ولد مادر</th>
+    <th>نام اطفال (سن)</th>
+    <th style="width:100px;">شماره تماس</th>
+    <th>آدرس</th>
+    <th style="width:75px;">استحقاق</th>
   </tr></thead>
   <tbody>${rows}</tbody>
 </table>
